@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beir-eval
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - name: beir-evaluation
+          image: registry.datexis.com/mmenke/beir-eval:0.1.13
+          command: ["/bin/sh", "-c"]
+          args: ["cd .. && python beir-evaluation/src/beir_eval.py" ]
+          volumeMounts:
+            - name: data-beir-evaluation
+              mountPath: /data
+            - name: beir-evaluation-root
+              mountPath: /root
+          env:
+            - name: DATASET
+              value: "trec-covid"
+            - name: OUTPUT_DIR
+              value: "/data"
+            - name: BATCH_SIZE
+              value: "4"
+            - name: BERT_MODEL
+              value: "bert-base-uncased"
+
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              cpu: 1
+              memory: 1Gi
+            limits:
+              nvidia.com/gpu: 1
+              memory: 5Gi
+              cpu: 1
+      imagePullSecrets:
+        - name: private-registry-auth
+      restartPolicy: Never
+      nodeSelector:
+        gpu: k80
+      volumes:
+        - name: data-beir-evaluation
+          persistentVolumeClaim:
+            claimName: data-beir-evaluation
+        - name: beir-evaluation-root
+          persistentVolumeClaim:
+            claimName: beir-evaluation-root
