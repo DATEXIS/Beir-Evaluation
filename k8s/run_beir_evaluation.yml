@@ -10,7 +10,7 @@ spec:
         - name: beir-evaluation
           image: registry.datexis.com/mmenke/beir-eval:0.1.43
           command: ["/bin/sh", "-c"]
-          args: ["cd .. && python beir-evaluation/src/beir_eval.py" ]
+          args: ["cd .. && python beir-evaluation/src/run.py" ]
           volumeMounts:
             - name: data-beir-evaluation
               mountPath: /data
@@ -27,6 +27,8 @@ spec:
               value: "bert-base-german-cased"
             - name: FROM_PRETRAINED
               value: "False"
+            - name: TRAIN
+              value: "True"
 
           resources:
             requests:
