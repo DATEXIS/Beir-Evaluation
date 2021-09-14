@@ -1,8 +1,11 @@
 from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.train import TrainRetriever
+from sentence_transformers import losses, models
 import os
 import logging
 from beir import util
+from biencoder import BiEncoder
+from transformers import BertTokenizerFast
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,17 +31,21 @@ class BeirTrain:
 
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
         dev_corpus, dev_queries, dev_qrels = GenericDataLoader(data_folder=data_path).load(split="dev")
-        # todo: provide model, in example it is used SentenceTransformer, is this correct?
-        # https://github.com/UKPLab/beir/blob/933b349bf300718cd6a2d285c51fe78f48fdec85/examples/retrieval/training/train_sbert.py#L46
-        model = ''
+
+        tokenizer = BertTokenizerFast.from_pretrained(self.bert_model, do_lower_case=('uncased' in self.bert_model))
+        tokenizer.add_special_tokens({'additional_special_tokens': ['[ent]']})
+
+        model = BiEncoder(device=self.device, tokenizer=, bert_model=self.bert_model)
 
         retriever = TrainRetriever(model=model, batch_size=self.batch_size)
         train_samples = retriever.load_train(corpus, queries, qrels)
         train_dataloader = retriever.prepare_train(train_samples, shuffle=True)
 
-        # todo: uses loss from sentence_transformer, is this correcT?
+        # COSINE-PRODUCT
         # train_loss = losses.MultipleNegativesRankingLoss(model=retriever.model)
-        train_loss = ''
+
+        # DOT-PRODUCT
+        train_loss = losses.MultipleNegativesRankingLoss(model=retriever.model, similarity_fct=util.dot_score)
 
         if dev_queries and dev_qrels and dev_corpus:
             ir_evaluator = retriever.load_ir_evaluator(dev_corpus, dev_queries, dev_qrels)

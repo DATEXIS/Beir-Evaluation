@@ -16,13 +16,9 @@ class Encoder(nn.Module):
             param.requires_grad = False
         self.bert.resize_token_embeddings(len_of_token_embeddings)
 
-    # def forward(self, token_ids: Tensor) -> Tensor:
-    #     hidden_states, cls_tokens = self.bert(token_ids, return_dict=False)
-    #     return cls_tokens
-
     def forward(self, token_ids: Tensor, attention_mask: Tensor) -> Tensor:
-        hidden_states, cls_tokens = self.bert(token_ids, attention_mask=attention_mask, return_dict=False)
-        return cls_tokens
+        last_hidden_states, pooler_output = self.bert(token_ids, attention_mask=attention_mask, return_dict=False)
+        return pooler_output
 
 
 class BiEncoder:
@@ -62,9 +58,9 @@ class BiEncoder:
             for start_idx in trange(0, len(queries), batch_size):
                 encoded = self.tokenizer(queries[start_idx:start_idx + batch_size], truncation=True, padding=True,
                                          return_tensors='pt')
-                cls_tokens = self.encoder_concept(encoded['input_ids'].cuda(),
-                                                  attention_mask=encoded['attention_mask'].cuda())
-                query_embeddings += cls_tokens.cpu().squeeze()
+                pooler_output = self.encoder_concept(encoded['input_ids'].cuda(),
+                                                     attention_mask=encoded['attention_mask'].cuda())
+                query_embeddings += pooler_output.cpu().squeeze()
 
         return torch.stack(query_embeddings)
 
