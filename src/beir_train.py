@@ -19,7 +19,7 @@ class BeirTrain:
         self.device = device
         self.bert_model = bert_model
 
-    def train_model(self):
+    def train_model(self, model_name: str):
         logger.info(f'starting evaluation dataset {self.dataset}')
         output_dir_data = f'{self.output_dir}/{self.dataset}'
         if os.path.isdir(output_dir_data):
@@ -30,12 +30,15 @@ class BeirTrain:
             data_path = util.download_and_unzip(url, output_dir_data)
 
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
-        dev_corpus, dev_queries, dev_qrels = GenericDataLoader(data_folder=data_path).load(split="dev")
+        if not os.path.exists(f'{data_path}/qrels/dev.tsv'):
+            dev_corpus = dev_queries = dev_qrels = None
+        else:
+            dev_corpus, dev_queries, dev_qrels = GenericDataLoader(data_folder=data_path).load(split="dev")
 
         tokenizer = BertTokenizerFast.from_pretrained(self.bert_model, do_lower_case=('uncased' in self.bert_model))
         tokenizer.add_special_tokens({'additional_special_tokens': ['[ent]']})
 
-        model = BiEncoder(device=self.device, tokenizer=, bert_model=self.bert_model)
+        model = BiEncoder(device=self.device, tokenizer=tokenizer, bert_model=self.bert_model)
 
         retriever = TrainRetriever(model=model, batch_size=self.batch_size)
         train_samples = retriever.load_train(corpus, queries, qrels)
@@ -52,7 +55,7 @@ class BeirTrain:
         else:
             ir_evaluator = retriever.load_dummy_evaluator()
 
-        model_save_path = f'{self.output_dir}/output/{self.model_name}-v1-{self.dataset}'
+        model_save_path = f'{self.output_dir}/output/{model_name}-v1-{self.dataset}'
 
         os.makedirs(model_save_path, exist_ok=True)
 

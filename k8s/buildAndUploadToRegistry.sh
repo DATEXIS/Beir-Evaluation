@@ -4,7 +4,7 @@
 # build image
 IMAGE=registry.datexis.com/mmenke/beir-eval
 
-version=0.1.43
+version=0.1.50
 echo "Version: $version"
 docker build -t $IMAGE -t $IMAGE:$version .
 docker login -u $1 -p $2 d

@@ -1,14 +1,14 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: beir-eval-not-pretrained-de
+  name: beir-train-pretrained-de
 spec:
   backoffLimit: 0
   template:
     spec:
       containers:
         - name: beir-evaluation
-          image: registry.datexis.com/mmenke/beir-eval:0.1.43
+          image: registry.datexis.com/mmenke/beir-eval:0.1.50
           command: ["/bin/sh", "-c"]
           args: ["cd .. && python beir-evaluation/src/run.py" ]
           volumeMounts:
@@ -24,11 +24,15 @@ spec:
             - name: BATCH_SIZE
               value: "4"
             - name: BERT_MODEL
-              value: "bert-base-german-cased"
+              value: "bert-base-uncased"
             - name: FROM_PRETRAINED
-              value: "False"
+              value: "True"
             - name: TRAIN
               value: "True"
+            - name: EVAL
+              value: "False"
+            - name: MODEL_NAME
+              value: 'test-model'
 
           resources:
             requests:
