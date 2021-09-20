@@ -1,5 +1,5 @@
 from beir_eval import BeirEval
-from beir_train import BeirTrain
+# from beir_train import BeirTrain
 import torch
 import os
 import logging
@@ -14,22 +14,22 @@ if __name__ == '__main__':
     batch_size = int(os.getenv('BATCH_SIZE', '128'))
     bert_model = os.getenv('BERT_MODEL', 'bert-base-uncased')
     from_pretrained = os.getenv('FROM_PRETRAINED', '').lower() in ['true', '1']
-    train = os.getenv('TRAIN', '').lower() in ['true', '1']
-    eval = os.getenv('EVAL', '').lower() in ['true', '1']
-    model_name = os.getenv('MODEL_NAME', '')
+    # train = os.getenv('TRAIN', '').lower() in ['true', '1']
+    # eval = os.getenv('EVAL', '').lower() in ['true', '1']
+    # model_name = os.getenv('MODEL_NAME', '')
     logger.info(f'using device format {device}')
-    if eval:
-        logger.info(
-            f'configs for evaluation: \n BERT_MODEL: {bert_model} \n DATASET: {dataset} \n OUTPUT_DIR: {output_dir} \n '
-            f'BATCH_SIZE: {batch_size} \n FROM_PRETRAINED: {from_pretrained}')
+    # if eval:
+    logger.info(
+        f'configs for evaluation: \n BERT_MODEL: {bert_model} \n DATASET: {dataset} \n OUTPUT_DIR: {output_dir} \n '
+        f'BATCH_SIZE: {batch_size} \n FROM_PRETRAINED: {from_pretrained}')
 
-        evaluation = BeirEval(bert_model, dataset, output_dir, device, batch_size)
-        evaluation.evaluate_model(from_pretrained=from_pretrained)
+    evaluation = BeirEval(bert_model, dataset, output_dir, device, batch_size)
+    evaluation.evaluate_model(from_pretrained=from_pretrained)
 
-    if train:
-        logger.info(
-            f'configs for training: \n BERT_MODEL: {bert_model} \n DATASET: {dataset} \n OUTPUT_DIR: {output_dir} \n '
-            f'BATCH_SIZE: {batch_size}')
-
-        training = BeirTrain(bert_model, dataset, output_dir, device, batch_size)
-        training.train_model(model_name=model_name)
+    # if train:
+    #     logger.info(
+    #         f'configs for training: \n BERT_MODEL: {bert_model} \n DATASET: {dataset} \n OUTPUT_DIR: {output_dir} \n '
+    #         f'BATCH_SIZE: {batch_size}')
+    #
+    #     training = BeirTrain(bert_model, dataset, output_dir, device, batch_size)
+    #     training.train_model(model_name=model_name)
