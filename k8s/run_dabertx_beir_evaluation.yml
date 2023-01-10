@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dabertx-beir-beir-eval
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      containers:
+        - name: dabertx-beir-evaluation
+          image: registry.datexis.com/mmenke/beir-eval:0.2.7
+          command: ["/bin/sh", "-c"]
+          args: ["cd .. && python beir-evaluation/src/run.py --train True --eval True"]
+          volumeMounts:
+            - name: data-beir-evaluation
+              mountPath: /data
+            - name: beir-evaluation-root
+              mountPath: /root
+
+          resources:
+            requests:
+              nvidia.com/gpu: 1
+              cpu: 1
+              memory: 8Gi
+            limits:
+              nvidia.com/gpu: 1
+              memory: 16Gi
+              cpu: 4
+      imagePullSecrets:
+        - name: private-registry-auth
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: cl-worker22
+        gpu: v100
+      volumes:
+        - name: data-beir-evaluation
+          persistentVolumeClaim:
+            claimName: data-beir-evaluation
+        - name: beir-evaluation-root
+          persistentVolumeClaim:
+            claimName: beir-evaluation-root

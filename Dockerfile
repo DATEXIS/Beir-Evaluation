@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:1.9.0-cuda10.2-cudnn7-runtime
+FROM pytorch/pytorch:1.13.0-cuda11.6-cudnn8-runtime
 
 RUN apt-get update && DEBIAN_FRONTEND="noninteractive"\
     apt-get install -y \
@@ -16,7 +16,13 @@ RUN pip install --upgrade pip git+https://github.com/huggingface/transformers.gi
                             scipy tqdm numpy \
                             sklearn datasets sentencepiece
 
+WORKDIR DABERTX-Transformers
+COPY DABERTX-transformers .
+RUN pip install .
+
+
 RUN mkdir -p /beir-evaluation
 WORKDIR /beir-evaluation
+
 
 COPY src/ ./src
