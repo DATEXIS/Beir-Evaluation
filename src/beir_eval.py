@@ -18,7 +18,7 @@ class BeirEval:
         corpus, queries, qrels = self.dataset_retriever.testset()
 
         logger.info(f'loading model with batch size {self.batch_size}')
-        model = DRES(self.model.model, batch_size=self.batch_size)
+        model = DRES(self.model, batch_size=self.batch_size)
 
         retriever = EvaluateRetrieval(model, score_function='cos_sim')
         results = retriever.retrieve(corpus, queries)

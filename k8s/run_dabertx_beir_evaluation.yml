@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
         - name: dabertx-beir-evaluation
-          image: registry.datexis.com/mmenke/beir-eval:0.2.7
+          image: registry.datexis.com/mmenke/beir-eval:0.2.10
           command: ["/bin/sh", "-c"]
           args: ["cd .. && python beir-evaluation/src/run.py --train True --eval True"]
           volumeMounts:

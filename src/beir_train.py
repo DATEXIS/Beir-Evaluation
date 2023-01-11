@@ -21,7 +21,7 @@ class BeirTrain:
         corpus, queries, qrels = self.dataset_retriever.testset()
         dev_corpus, dev_queries, dev_qrels = self.dataset_retriever.devset()
 
-        retriever = TrainRetriever(model=self.model.model, batch_size=self.batch_size)
+        retriever = TrainRetriever(model=self.model, batch_size=self.batch_size)
         train_samples = retriever.load_train(corpus, queries, qrels)
         train_dataloader = retriever.prepare_train(train_samples, shuffle=True)
 

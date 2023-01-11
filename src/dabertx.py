@@ -2,9 +2,54 @@ from transformers import DABERTXModel, DABERTXConfig
 from transformers import BertTokenizerFast
 from transformers.models.dabertx import utils as dabertx_utils
 import torch
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Tuple, Iterable, Type, Callable
 import numpy as np
-from torch import Tensor
+from torch import Tensor, nn
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
+from sentence_transformers.evaluation import SentenceEvaluator
+from tqdm.autonotebook import trange
+import transformers
+import os
+
+
+def batch_to_device(batch, target_device: str):
+    """
+    send a pytorch batch to a device (CPU/GPU)
+    """
+    for key in batch:
+        if isinstance(batch[key], Tensor):
+            batch[key] = batch[key].to(target_device)
+    return batch
+
+
+def smart_batching_collate(self, batch):
+    """
+        Transforms a batch from a SmartBatchingDataset to a batch of tensors for the model
+        Here, batch is a list of tuples: [(tokens, label), ...]
+        :param batch:
+            a batch from a SmartBatchingDataset
+        :return:
+            a batch of tensors for the model
+        """
+    num_texts = len(batch[0].texts)
+    texts = [[] for _ in range(num_texts)]
+    labels = []
+
+    for example in batch:
+        for idx, text in enumerate(example.texts):
+            texts[idx].append(text)
+
+        labels.append(example.label)
+
+    labels = torch.tensor(labels)
+
+    sentence_features = []
+    for idx in range(num_texts):
+        tokenized = self.tokenize(texts[idx])
+        sentence_features.append(tokenized)
+
+    return sentence_features, labels
 
 
 class DaBERTx:
@@ -14,6 +59,7 @@ class DaBERTx:
         self.model_name = model_name
         self.model = DABERTXModel(DABERTXConfig.from_pretrained(model_name))
         self.model.to(device)
+        self.device = device
         self.tokenizer = BertTokenizerFast.from_pretrained(tokenizer)
 
     def encode(self, sentences, batch_size: int = 32, **kwargs):
@@ -66,3 +112,132 @@ class DaBERTx:
             sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for
                          doc in corpus]
         return self.encode(sentences, batch_size=batch_size, **kwargs)
+
+    def fit(self,
+            train_objectives: Iterable[Tuple[DataLoader, nn.Module]],
+            evaluator: SentenceEvaluator = None,
+            epochs: int = 1,
+            steps_per_epoch=None,
+            scheduler: str = 'WarmupLinear',
+            warmup_steps: int = 10000,
+            optimizer_class: Type[Optimizer] = torch.optim.AdamW,
+            optimizer_params: Dict[str, object] = {'lr': 2e-5},
+            weight_decay: float = 0.01,
+            evaluation_steps: int = 0,
+            output_path: str = None,
+            save_best_model: bool = True,
+            max_grad_norm: float = 1,
+            decay_steps=100_000,
+            use_amp: bool = False,
+            callback: Callable[[float, int, int], None] = None,
+            checkpoint_path: str = '/tmp/checkpoint',
+            checkpoint_save_steps: int = 500,
+            checkpoint_save_total_limit: int = 0,
+            **kwargs
+            ):
+
+        # TODO:
+        checkpoint_saves = 0
+        dataloaders = [dataloader for dataloader, _ in train_objectives]
+        for dataloader in dataloaders:
+            dataloader.collate_fn = smart_batching_collate
+
+        data_iterators = [iter(dataloader) for dataloader in dataloaders]
+
+        loss_models = [loss for _, loss in train_objectives]
+
+        self.best_score = -9999999
+
+        if steps_per_epoch is None or steps_per_epoch == 0:
+            steps_per_epoch = min([len(dataloader) for dataloader in dataloaders])
+
+        num_train_steps = int(steps_per_epoch * epochs)
+
+        optimizers = []
+        schedulers = []
+        for loss_model in loss_models:
+            param_optimizer = list(loss_model.named_parameters())
+
+            no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+            optimizer_grouped_parameters = [
+                {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+                 'weight_decay': weight_decay},
+                {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+            ]
+            optimizer = optimizer_class(optimizer_grouped_parameters, **optimizer_params)
+            scheduler_obj = transformers.get_polynomial_decay_schedule_with_warmup(optimizer, warmup_steps,
+                                                                                   num_train_steps)
+            optimizers.append(optimizer)
+            schedulers.append(scheduler_obj)
+            loss_model.to(self.device)
+
+        global_step = 0
+        num_train_objectives = len(train_objectives)
+
+        skip_scheduler = False
+        for epoch in trange(epochs, desc="Epoch"):
+            training_steps = 0
+
+            for loss_model in loss_models:
+                loss_model.zero_grad()
+                loss_model.train()
+
+            for _ in trange(steps_per_epoch, desc="Iteration", smoothing=0.05):
+                for train_idx in range(num_train_objectives):
+                    loss_model = loss_models[train_idx]
+                    optimizer = optimizers[train_idx]
+                    scheduler = schedulers[train_idx]
+                    data_iterator = data_iterators[train_idx]
+
+                    try:
+                        data = next(data_iterator)
+                    except StopIteration:
+                        data_iterator = iter(dataloaders[train_idx])
+                        data_iterators[train_idx] = data_iterator
+                        data = next(data_iterator)
+
+                    features, labels = data
+                    labels = labels.to(self.device)
+                    features = list(map(lambda batch: batch_to_device(batch, self.device), features))
+
+                    # if use_amp:
+                    #     with autocast():
+                    #         loss_value = loss_model(features, labels)
+                    #
+                    #     scale_before_step = scaler.get_scale()
+                    #     scaler.scale(loss_value).backward()
+                    #     scaler.unscale_(optimizer)
+                    #     torch.nn.utils.clip_grad_norm_(loss_model.parameters(), max_grad_norm)
+                    #     scaler.step(optimizer)
+                    #     scaler.update()
+                    #
+                    #     skip_scheduler = scaler.get_scale() != scale_before_step
+                    # else:
+                    loss_value = loss_model(features, labels)
+                    loss_value.backward()
+                    torch.nn.utils.clip_grad_norm_(loss_model.parameters(), max_grad_norm)
+                    optimizer.step()
+
+                    optimizer.zero_grad()
+
+                    if not skip_scheduler:
+                        scheduler.step()
+
+                training_steps += 1
+                global_step += 1
+
+                if evaluation_steps > 0 and training_steps % evaluation_steps == 0:
+                    score = evaluator(self, output_path=output_path, epoch=epoch, steps=training_steps)
+                    if callback is not None:
+                        callback(score, epoch, training_steps)
+                    if score > self.best_score:
+                        self.best_score = score
+                        if save_best_model:
+                            self.save(output_path)
+                    for loss_model in loss_models:
+                        loss_model.zero_grad()
+                        loss_model.train()
+
+                if checkpoint_path is not None and checkpoint_save_steps is not None and checkpoint_save_steps > 0 \
+                        and global_step % checkpoint_save_steps == 0 and checkpoint_save_total_limit > checkpoint_saves:
+                    self.model.save(os.path.join(checkpoint_path, str(global_step)))
