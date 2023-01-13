@@ -8,9 +8,9 @@ spec:
     spec:
       containers:
         - name: dabertx-beir-evaluation
-          image: registry.datexis.com/mmenke/beir-eval:0.2.10
+          image: registry.datexis.com/mmenke/beir-eval:0.2.16
           command: ["/bin/sh", "-c"]
-          args: ["cd .. && python beir-evaluation/src/run.py --train True --eval True"]
+          args: ["cd .. && python beir-evaluation/src/run.py --eval True"]
           volumeMounts:
             - name: data-beir-evaluation
               mountPath: /data
@@ -30,7 +30,7 @@ spec:
         - name: private-registry-auth
       restartPolicy: Never
       nodeSelector:
-        kubernetes.io/hostname: cl-worker22
+        kubernetes.io/hostname: cl-worker18
         gpu: v100
       volumes:
         - name: data-beir-evaluation

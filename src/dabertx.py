@@ -1,3 +1,4 @@
+import logging
 from transformers import DABERTXModel, DABERTXConfig
 from transformers import BertTokenizerFast
 from transformers.models.dabertx import utils as dabertx_utils
@@ -8,9 +9,35 @@ from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from sentence_transformers.evaluation import SentenceEvaluator
+from sentence_transformers.readers.InputExample import InputExample
 from tqdm.autonotebook import trange
 import transformers
 import os
+from transformers import DataCollatorForLanguageModeling
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# class DABERTXCollator:
+#     def __init__(self, tokenizer, collator):
+#         self.tokenizer = tokenizer
+#         self.collator = collator
+#
+#     def __call__(self, examples):
+#         # flatten into a single dict
+#         logger.info(f"EXAMPLES:\n{examples}")
+#         if isinstance(examples, InputExample):
+#             new_examples = []
+#             dabertx_utils.sequence_to_word_batch(new_examples, self.tokenizer, self.collator)
+#
+#         else:
+#             new_examples = {k: [v] for k, v in examples[0].items()}
+#             for example in examples[1:]:
+#                 for k in example.keys():
+#                     new_examples[k].append(example[k])
+#
+#             return dabertx_utils.sequence_to_word_batch(new_examples, self.tokenizer, self.collator)
 
 
 def batch_to_device(batch, target_device: str):
@@ -18,38 +45,10 @@ def batch_to_device(batch, target_device: str):
     send a pytorch batch to a device (CPU/GPU)
     """
     for key in batch:
+        key = key.long()
         if isinstance(batch[key], Tensor):
             batch[key] = batch[key].to(target_device)
     return batch
-
-
-def smart_batching_collate(self, batch):
-    """
-        Transforms a batch from a SmartBatchingDataset to a batch of tensors for the model
-        Here, batch is a list of tuples: [(tokens, label), ...]
-        :param batch:
-            a batch from a SmartBatchingDataset
-        :return:
-            a batch of tensors for the model
-        """
-    num_texts = len(batch[0].texts)
-    texts = [[] for _ in range(num_texts)]
-    labels = []
-
-    for example in batch:
-        for idx, text in enumerate(example.texts):
-            texts[idx].append(text)
-
-        labels.append(example.label)
-
-    labels = torch.tensor(labels)
-
-    sentence_features = []
-    for idx in range(num_texts):
-        tokenized = self.tokenize(texts[idx])
-        sentence_features.append(tokenized)
-
-    return sentence_features, labels
 
 
 class DaBERTx:
@@ -113,6 +112,34 @@ class DaBERTx:
                          doc in corpus]
         return self.encode(sentences, batch_size=batch_size, **kwargs)
 
+    def smart_batching_collate(self, batch):
+        """
+            Transforms a batch from a SmartBatchingDataset to a batch of tensors for the model
+            Here, batch is a list of tuples: [(tokens, label), ...]
+            :param batch:
+                a batch from a SmartBatchingDataset
+            :return:
+                a batch of tensors for the model
+            """
+        num_texts = len(batch[0].texts)
+        texts = [[] for _ in range(num_texts)]
+        labels = []
+
+        for example in batch:
+            for idx, text in enumerate(example.texts):
+                texts[idx].append(text)
+
+            labels.append(example.label)
+
+        labels = torch.tensor(labels)
+
+        sentence_features = []
+        for idx in range(num_texts):
+            tokenized = self.encode(texts[idx])
+            sentence_features.append(tokenized)
+
+        return sentence_features, labels
+
     def fit(self,
             train_objectives: Iterable[Tuple[DataLoader, nn.Module]],
             evaluator: SentenceEvaluator = None,
@@ -139,10 +166,13 @@ class DaBERTx:
         # TODO:
         checkpoint_saves = 0
         dataloaders = [dataloader for dataloader, _ in train_objectives]
-        for dataloader in dataloaders:
-            dataloader.collate_fn = smart_batching_collate
 
-        data_iterators = [iter(dataloader) for dataloader in dataloaders]
+        for dataloader in dataloaders:
+            # TODO:
+            # collator = DABERTXCollator(self.tokenizer, DataCollatorForLanguageModeling(self.tokenizer, mlm=True,
+            #                                                                            pad_to_multiple_of=64))
+            dataloader.collate_fn = self.smart_batching_collate
+            # dataloader.collate_fn = collator
 
         loss_models = [loss for _, loss in train_objectives]
 
@@ -172,8 +202,8 @@ class DaBERTx:
             loss_model.to(self.device)
 
         global_step = 0
+        data_iterators = [iter(dataloader) for dataloader in dataloaders]
         num_train_objectives = len(train_objectives)
-
         skip_scheduler = False
         for epoch in trange(epochs, desc="Epoch"):
             training_steps = 0
